@@ -22,12 +22,16 @@
         .btn-clear-search { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: #adb5bd; cursor: pointer; font-size: 1.1rem; display: none; z-index: 10; }
         .cat-header { background-color: #ffc107; color: #000; font-weight: 800; padding: 8px 15px; margin-top: 0; font-size: 1.1rem; border-bottom: 1px solid #e0a800; }
         .product-row { background: white; border-bottom: 1px solid #eee; padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; }
+        .product-row.oos { background-color: #f8f9fa; opacity: 0.8; }
         .p-info { flex: 1; padding-right: 10px; overflow: hidden; }
         .p-name { font-size: 1.1rem; font-weight: 700; color: #000; line-height: 1.3; margin-bottom: 2px; }
         .p-code { font-size: 0.85rem; color: #888; font-weight: normal; font-family: Arial, sans-serif; }
+        .oos-badge { font-size: 0.8rem; background-color: #dc3545; color: white; padding: 2px 6px; border-radius: 4px; margin-left: 5px; vertical-align: middle; }
         .qty-control { display: flex; align-items: center; background: #fff; border: 1px solid #ced4da; border-radius: 8px; width: 120px; justify-content: space-between; height: 38px; flex-shrink: 0; overflow: hidden; }
+        .qty-control.disabled { background: #e9ecef; border-color: #dee2e6; }
         .qty-btn { width: 35px; height: 100%; border-radius: 0; background: #f8f9fa; color: #212529; display: flex; align-items: center; justify-content: center; cursor: pointer; font-weight: bold; font-size: 1.2rem; user-select: none; border: none; }
         .qty-btn:active { background: #ffc107; }
+        .qty-btn.disabled { color: #adb5bd; cursor: not-allowed; background: #e9ecef; }
         .qty-input { width: 50px; text-align: center; border: none; font-weight: bold; font-size: 1.1rem; color: #333; background: transparent; padding: 0; }
         .qty-input.unit-kg { color: #d63384; font-size: 1rem; }
         .product-row.selected { background-color: #fff9db; border-left: 5px solid #ffc107; }
@@ -46,8 +50,6 @@
         .btn-unit-select:hover { background-color: #f8f9fa; }
         .btn-unit-select.piece { border-color: #212529; color: #212529; }
         .btn-unit-select.kg { border-color: #d63384; color: #d63384; }
-        
-        /* 常用清單分隔線 */
         .freq-divider { text-align: center; margin: 20px 0; font-size: 0.85rem; color: #aaa; position: relative; }
         .freq-divider:before { content: ""; position: absolute; top: 50%; left: 15%; width: 25%; height: 1px; background: #ddd; }
         .freq-divider:after { content: ""; position: absolute; top: 50%; right: 15%; width: 25%; height: 1px; background: #ddd; }
@@ -84,8 +86,8 @@
             <div class="modal-body">
                 <p class="text-center mb-3">此產品支持稱重計價，請確認單位：</p>
                 <div class="unit-btn-group">
-                    <button id="btn-unit-piece" class="btn-unit-select piece" onclick="confirmUnit('piece')"><i class="bi bi-box-seam"></i> 件 / 包<br>(默認)</button>
-                    <button class="btn-unit-select kg" onclick="confirmUnit('kg')"><i class="bi bi-speedometer2"></i> KG<br>(公斤)</button>
+                    <button id="btn-unit-left" class="btn-unit-select"><i class="bi bi-box-seam"></i> 左按鈕</button>
+                    <button id="btn-unit-right" class="btn-unit-select"><i class="bi bi-speedometer2"></i> 右按鈕</button>
                 </div>
             </div>
         </div>
@@ -106,14 +108,17 @@
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    // V7.2 混合增強版 - 肉佐壽司 (銅)
+    // V7.3 混合增強版 - B01 邏輯優化
     const customerName = "肉佐壽司 (銅)"; const customerCode = "W3788";
-    const storageKey = "rouzuo_cwb_v7"; // 專屬存儲 Key
+    const storageKey = "rouzuo_cwb_v7";
     
     // 1. 鐵底清單
     const frequentCodes = ["D06","D10JA","D81A","D39B","D48G","C10A","D47B","D19EA","D31A","A06E","D59H","D57A","C18A","C28B","D50B","C51A","C51C","D68","D69","C18C","C24B","C50D","C58AB","D41F","C14I","C26","C27A","C45","D19ER"];
     
-    // 2. 記憶清單
+    // 2. 缺貨清單
+    const outOfStockCodes = ["C58AC","D58C","D10F","D10D","D09M","D09G"];
+
+    // 3. 記憶清單
     let learnedFrequent = [];
 
     const eelProducts = ["D22J", "D22L", "D22", "D22C", "D22A", "D22D", "D22I", "D22G"];
@@ -153,7 +158,6 @@
         productMap = {}; 
         fullCatalog.forEach(c=>{c.items.forEach(i=>{const m=i.match(/^(.*)\s*\(([A-Za-z0-9]+)\)$/);if(m)productMap[m[2]]={fullName:i,name:m[1],code:m[2]}})});
         
-        // V7.2 Hybrid Logic: Load learned frequent items
         const savedFreq = localStorage.getItem(storageKey + '_learned');
         if(savedFreq) {
             try { 
@@ -165,7 +169,6 @@
         cartModal=new bootstrap.Modal(document.getElementById('cartModal')); unitModal=new bootstrap.Modal(document.getElementById('unitSelectionModal'));
     }
     
-    // V7.2 Date Logic
     function getDeliveryDate() {
         const now = new Date();
         const hour = now.getHours();
@@ -218,15 +221,25 @@
     }
     
     function renderAll(f=''){const c=document.getElementById('tab-all');let h='';const t=f.toUpperCase().split('');fullCatalog.forEach(cat=>{const items=cat.items.filter(i=>{if(!f)return true;const u=i.toUpperCase();return t.every(x=>u.includes(x))});if(items.length>0){if(!f)h+=`<div class="cat-header">${cat.cat}</div>`;items.forEach(i=>h+=createProductRow(i))}});if(h==='')h='<div class="text-center p-5 text-muted">找不到相關產品</div>';c.innerHTML=h}
+    
     function createProductRow(s){
         let n=s,c='UNKNOWN';const m=s.match(/^(.*)\s*\(([A-Za-z0-9]+)\)$/);if(m){n=m[1];c=m[2]}else{c=s.replace(/[^a-zA-Z0-9]/g,'')}
+        
+        if (outOfStockCodes.includes(c)) {
+            return `<div class="product-row oos" id="row-${c}"><div class="p-info"><div class="p-name">${n} <span class="oos-badge">🚫 缺貨</span></div><div class="p-code">${c}</div></div><div class="qty-control disabled"><div class="qty-btn disabled">-</div><input type="text" class="qty-input" value="0" readonly disabled><div class="qty-btn disabled">+</div></div></div>`;
+        }
+
         const q=cart[c]||0; let val=q, cls='qty-input'; if(q>0&&cartUnits[c]==='kg'){val+=' K';cls+=' unit-kg'}
         const sel=q>0?'selected':'';
         return `<div class="product-row ${sel}" id="row-${c}"><div class="p-info"><div class="p-name">${n}</div><div class="p-code">${c}</div></div><div class="qty-control"><div class="qty-btn" onclick="updateQty('${c}',-1)">-</div><input type="text" class="${cls}" id="qty-${c}" value="${val}" readonly><div class="qty-btn" onclick="updateQty('${c}',1)">+</div></div></div>`
     }
+    
     function filterAllProducts(){const v=document.getElementById('searchInput').value;document.getElementById('clearSearchBtn').style.display=v.length?'block':'none';renderAll(v)}
     function clearSearch(){document.getElementById('searchInput').value='';document.getElementById('clearSearchBtn').style.display='none';renderAll('')}
+    
     function updateQty(c,d){
+        if (outOfStockCodes.includes(c)) return;
+
         if(eelProducts.includes(c)){
             if(d>0&&(!cart[c]||cart[c]===0)){cart[c]=5;cartUnits[c]='kg'}else{if(!cart[c])cart[c]=0;cart[c]+=d*5}
             if(cart[c]<=0){delete cart[c];delete cartUnits[c]}
@@ -234,15 +247,41 @@
         }
         if(d>0&&(!cart[c]||cart[c]===0)&&weightedProducts.includes(c)&&!cartUnits[c]){
             pendingProductCode=c;
-            const btn=document.getElementById('btn-unit-piece');
-            btn.innerHTML=(c==='B01')?'<i class="bi bi-box-seam"></i> 隻<br>(默認)':'<i class="bi bi-box-seam"></i> 件 / 包<br>(默認)';
+            const leftBtn = document.getElementById('btn-unit-left');
+            const rightBtn = document.getElementById('btn-unit-right');
+
+            // Reset classes
+            leftBtn.className = 'btn-unit-select';
+            rightBtn.className = 'btn-unit-select';
+
+            if (c === 'B01') {
+                // B01 Logic: KG is Default (Left)
+                leftBtn.classList.add('kg');
+                leftBtn.innerHTML = '<i class="bi bi-speedometer2"></i> KG<br>(默認)';
+                leftBtn.onclick = function() { confirmUnit('kg'); };
+
+                rightBtn.classList.add('piece');
+                rightBtn.innerHTML = '<i class="bi bi-box-seam"></i> 隻';
+                rightBtn.onclick = function() { confirmUnit('piece'); };
+            } else {
+                // Standard Logic: Piece is Default (Left)
+                leftBtn.classList.add('piece');
+                leftBtn.innerHTML = '<i class="bi bi-box-seam"></i> 件 / 包<br>(默認)';
+                leftBtn.onclick = function() { confirmUnit('piece'); };
+
+                rightBtn.classList.add('kg');
+                rightBtn.innerHTML = '<i class="bi bi-speedometer2"></i> KG<br>(公斤)';
+                rightBtn.onclick = function() { confirmUnit('kg'); };
+            }
             unitModal.show(); return;
         }
         if(!cart[c])cart[c]=0; cart[c]+=d;
         if(cart[c]<=0){delete cart[c];delete cartUnits[c]}
         syncUI(c);
     }
+    
     function confirmUnit(u){if(pendingProductCode){cartUnits[pendingProductCode]=u;updateQty(pendingProductCode,1);unitModal.hide();pendingProductCode=null}}
+    
     function syncUI(c){
         const q=cart[c]||0, u=cartUnits[c];
         document.querySelectorAll(`#qty-${c}`).forEach(i=>{
@@ -253,7 +292,9 @@
         });
         calcTotal(); saveCart(); if(document.getElementById('cartModal').classList.contains('show'))renderCartModalItems();
     }
+    
     function clearCart(){if(Object.keys(cart).length===0)return;if(confirm("確定要清空所有已選貨品嗎？")){cart={};cartUnits={};localStorage.removeItem('orderCart_'+customerCode);localStorage.removeItem('orderUnits_'+customerCode);renderFrequent();renderAll();calcTotal();renderCartModalItems()}}
+    
     function calcTotal(){
         const count=Object.keys(cart).length; document.getElementById('totalQty').innerText=count;
         const b=document.getElementById('viewCartBtn');
@@ -269,31 +310,26 @@
     function sendWhatsApp(){
         if(Object.keys(cart).length===0){alert("請先選擇產品！");return}
         
-        // V7.2 Logic: Date
         const dateStr = getDeliveryDate();
         let msg=`${customerCode} ${customerName}\n日期：${dateStr}\n訂貨單：\n\n`;
         const fmt=c=>{const p=productMap[c];const n=p?p.name:c;let q=cart[c].toString();if(cartUnits[c]==='kg')q+='K';return ` ${q.padEnd(5,' ')} ${n} (${c})\n`};
         
-        // V7.2 Logic: Learning (Save non-frequent items)
         let hasNewItems = false;
         for(let c in cart){
-            // Only add to learned if NOT in hardcoded list AND NOT already learned
             if(!frequentCodes.includes(c) && !learnedFrequent.includes(c)){
                 learnedFrequent.push(c);
                 hasNewItems = true;
             }
-            msg+=fmt(c); // Add to message
+            msg+=fmt(c); 
         }
         
         if(hasNewItems){
             localStorage.setItem(storageKey + '_learned', JSON.stringify(learnedFrequent));
-            renderFrequent(); // Update UI immediately
+            renderFrequent(); 
         }
 
-        // V7.2 Logic: Group Send (Empty phone number)
         window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`,'_blank');
         
-        // Auto Clear Cart
         setTimeout(() => {
             cart = {}; cartUnits = {};
             saveCart();
